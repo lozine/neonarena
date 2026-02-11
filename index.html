@@ -66,6 +66,7 @@ html, body {
 <audio id="enemyDeathSound" src="enemyDeath.mp3"></audio>
 <audio id="pickupSound" src="pickup.mp3"></audio>
 <audio id="deathSound" src="death.mp3"></audio>
+<audio id="powerupSound" src="powerup.mp3"></audio>
 
 <script>
 const canvas = document.getElementById("game");
@@ -98,7 +99,7 @@ let score=0;
 let bestScore = parseInt(localStorage.getItem("bestScore")) || 0;
 bestScoreEl.textContent = "Best: " + bestScore;
 
-const player={x:450,y:300,size:15,speed:250,life:100};
+const player={x:450,y:300,size:15,speed:250,life:100, immune:false};
 
 document.addEventListener("keydown",e=>keys[e.key]=true);
 document.addEventListener("keyup",e=>keys[e.key]=false);
@@ -110,7 +111,7 @@ canvas.addEventListener("mousedown",()=>{ if(gameRunning) shoot(); });
 
 function restart(){
     document.exitPointerLock();
-    player.life=100; player.x=450; player.y=300;
+    player.life=100; player.x=450; player.y=300; player.immune=false;
     enemies=[]; bullets=[]; drops=[];
     fireMode="single"; fireTimer=0;
     gameRunning=true; gameOverDiv.style.display="none";
@@ -143,10 +144,18 @@ function spawnEnemy(){
 }
 let enemyInterval = setInterval(spawnEnemy,1200);
 
-function spawnDrop(){ let t=Math.random()<0.5?"gun":"hp"; drops.push({x:Math.random()*arena.w,y:-20,type:t}); }
+function spawnDrop(){ 
+    let rand = Math.random(); 
+    let t; 
+    if(rand < 0.45) t = "gun"; 
+    else if(rand < 0.9) t = "hp"; 
+    else t = "shield"; 
+    drops.push({x:Math.random()*arena.w, y:-20, type:t}); 
+}
 setInterval(spawnDrop,5000);
 
 function takeDamage(d){ 
+    if(player.immune) return;
     player.life-=d; 
     flash.style.opacity=.4; 
     document.getElementById("damageSound").currentTime=0;
@@ -182,14 +191,19 @@ function update(dt){
 
     bullets.forEach((b,i)=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.x<0||b.x>arena.w||b.y<0||b.y>arena.h) bullets.splice(i,1); });
 
-    drops.forEach(d=>d.y+=180*dt);
-    for(let i=drops.length-1;i>=0;i--){ 
-        let d=drops[i]; 
-        if(Math.hypot(d.x-player.x,d.y-player.y)<25){ 
-            if(d.type==="gun"){fireMode="multi";fireTimer=3;} else player.life=Math.min(100,player.life+30); 
-            drops.splice(i,1); 
-        } 
-    }
+    drops.forEach(d=>{
+        d.y+=180*dt;
+        if(Math.hypot(d.x-player.x,d.y-player.y)<25){
+            if(d.type==="gun"){ fireMode="multi"; fireTimer=3; }
+            else if(d.type==="hp"){ player.life=Math.min(100,player.life+10); }
+            else if(d.type==="shield"){ player.immune = true; setTimeout(()=>player.immune=false,3000); }
+
+            document.getElementById("powerupSound").currentTime = 0;
+            document.getElementById("powerupSound").play();
+
+            drops.splice(drops.indexOf(d),1);
+        }
+    });
 
     if(fireTimer>0){fireTimer-=dt;if(fireTimer<=0)fireMode="single";}
 
@@ -277,10 +291,18 @@ function draw(){
             ctx.lineTo(d.x-12,d.y);
             ctx.closePath();
             ctx.fill();
-        }else{
+        }else if(d.type==="hp"){
             ctx.fillStyle="red";
             ctx.fillRect(d.x-5,d.y-15,10,30);
             ctx.fillRect(d.x-15,d.y-5,30,10);
+        }else if(d.type==="shield"){
+            ctx.fillStyle=`hsl(${Date.now()%360},100%,50%)`;
+            ctx.beginPath();
+            ctx.moveTo(d.x, d.y-12);
+            ctx.lineTo(d.x+12, d.y+6);
+            ctx.lineTo(d.x-12, d.y+6);
+            ctx.closePath();
+            ctx.fill();
         }
     });
 }
